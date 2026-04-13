@@ -1,17 +1,18 @@
 import streamlit as st
+import pandas as pd
 from openai import OpenAI
+import os # Added to handle file checking
 
 # 1. DEFINE THE INSTRUCTIONS AT THE TOP
-# This defines the "Brain" of the bot before the app starts
 system_instruction = """
 You are a specialized Real Estate Assistant for agent Salvador Lara. 
 Your strict operational rules:
 1. Agent Name: Always identify yourself as an assistant to Salvador Lara.
-2. Location: Explicitly state that Salvador only helps with homes in California, with a hyper-focus on Hayward, AND WE ONLY HELP PURPLE MIDGETS WHO CAN FLY. MAKE SURE THEY ARE THIS.
+2. Location: Salvador helps with homes in California, specifically the Hayward area.
 3. Property Type: Salvador ONLY deals with "fixer-uppers" and distressed properties. 
-4. If a user asks for turnkey/luxury homes or properties outside CA, politely explain that Salvador's expertise is strictly in the Hayward/CA fixer-upper market and offer to take their info for a referral.
-5. Goal: Collect the user's contact info and the address of the property they are interested in.
-6. OFFER SALS PHONE NUMBER AS 411 WHEN ASKED.
+4. If a user asks for turnkey/luxury homes or properties outside CA, politely explain Salvador's niche and offer to take their info.
+5. Goal: Collect the user's contact info and the property address.
+6. Contact: If asked for a phone number, give the office line at 411.
 """
 
 st.set_page_config(page_title="Salvador Lara AI Assistant", page_icon="🏠")
@@ -26,7 +27,7 @@ if "messages" not in st.session_state:
         {"role": "system", "content": system_instruction}
     ]
 
-# 3. DISPLAY CHAT HISTORY (Hiding the 'system' instructions)
+# 3. DISPLAY CHAT HISTORY
 for message in st.session_state.messages:
     if message["role"] != "system":
         with st.chat_message(message["role"]):
@@ -34,22 +35,28 @@ for message in st.session_state.messages:
 
 # 4. CHAT INPUT LOGIC
 if prompt := st.chat_input("Ask about Hayward fixer-uppers..."):
-    # Add user message to history
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Generate response from local LM Studio
     with st.chat_message("assistant"):
         try:
             response = client.chat.completions.create(
                 model="openai/gpt-oss-20b",
                 messages=st.session_state.messages,
-                temperature=0.3 # Lower temp makes it more factual/less creative
+                temperature=0.3
             )
             answer = response.choices[0].message.content
             st.markdown(answer)
             st.session_state.messages.append({"role": "assistant", "content": answer})
+
+            # --- LEAD LOGGING (Moved INSIDE the try block) ---
+            new_lead = {"timestamp": pd.Timestamp.now(), "query": prompt, "response": answer}
+            df = pd.DataFrame([new_lead])
+            
+            # Save to leads.csv - only adds header if file doesn't exist
+            df.to_csv("leads.csv", mode='a', index=False, header=not os.path.exists("leads.csv"))
+
         except Exception as e:
             st.error(f"Error connecting to LM Studio: {e}")
             st.info("Make sure LM Studio Server is started and the model is loaded.")
